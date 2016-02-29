@@ -1,0 +1,29 @@
+# Remove-Large-Files-From-Git-Repository-History
+
+Keeping these steps here for posterity, and times when I have git but dodgy web browsing (I'm looking at you, Raspberry Pi). Could automate this, but that would be terrible. Credit to Ted Naleid at http://naleid.com
+
+Get a list of all SHAs for each object the repository has ever seen:  
+git rev-list --objects --all | sort -k 2 > allfileshas.txt
+
+this will get you a list of the unique files, for grepping etc, don't need it later though:  
+git rev-list --objects --all | sort -k 2 | cut -f 2 -d\  | uniq
+
+Get the last object SHA for all committed files and sort them in biggest to smallest order (this is all one line):  
+git gc && git verify-pack -v .git/objects/pack/pack-*.idx | egrep "^\w+ blob\W+[0-9]+ [0-9]+ [0-9]+$" | sort -k 3 -n -r > bigobjects.txt
+
+Take that result and iterate through each line of it to find the SHA, file size in bytes, and real file name (you also need the allfileshas.txt output file from above):  
+for SHA in `cut -f 1 -d\  < bigobjects.txt`; do  
+echo $(grep $SHA bigobjects.txt) $(grep $SHA allfileshas.txt) | awk '{print $1,$3,$7}' >> bigtosmall.txt  
+done;  
+
+You can now look at bigtosmall.txt to see the largest objects (ignore lines with only hashes, they're going to go away soon)  
+  
+Now, to remove large file(s) or folder(s) from the entire repository including previous commits:  
+git filter-branch --prune-empty --index-filter 'git rm -rf --cached --ignore-unmatch FILENAME_OR_REGEX' --tag-name-filter cat -- --all  
+
+where FILENAME_OR_REGEX is exactly what it sounds like (for example, *.MOV)
+
+Then clone the repository and leave no hardlinks:  
+git clone --no-hardlinks file:///Users/yourUser/your/full/repo/path repo-clone-name  
+
+Delete the old repository, force push and you're done! du -sh * from the parent directory to see how much smaller your repository is now.
